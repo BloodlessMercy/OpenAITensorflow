@@ -18,7 +18,7 @@ from pygame import Rect, QUIT, KEYUP, K_ESCAPE, K_PAUSE, K_p
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-BIRDS_PER_POP = 10
+BIRDS_PER_POP = 15
 MATING_SIZE = 2
 
 
@@ -376,7 +376,7 @@ def select_parents(number_of_parents, birds_with_fitness):
     return parent_birds
 
 
-def main(initial_nn_pop, max_generations=3):
+def main(initial_nn_pop, max_generations=10):
     """The application's entry point.
 
     If someone executes this module (instead of importing it, for
@@ -393,8 +393,9 @@ def main(initial_nn_pop, max_generations=3):
         birds_with_scores = run_game(birds)
         updated_birds = generate_new_generation(birds_with_scores)
         birds = pygame.sprite.Group()
-        print(updated_birds)
         for index, bird in updated_birds.items():
+            bird.y = (0.5 * WIN_HEIGHT) - (0.5 * Bird.HEIGHT)
+            bird.msec_to_climb = 0
             birds.add(bird)
         generation += 1
     pygame.quit()
@@ -557,7 +558,10 @@ def run_game(birds):
             done = True
         pygame.display.flip()
         frame_clock += 1
-    print('Game over! Score: ', score_list[0].score)
+    print("Game over! Scores: \n\t")
+    for index, bird in score_list.items():
+        print(index, ' - ', bird.score)
+
     return score_list
 
 
