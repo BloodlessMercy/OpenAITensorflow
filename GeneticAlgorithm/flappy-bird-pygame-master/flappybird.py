@@ -3,10 +3,8 @@
 """Flappy Bird, implemented using Pygame."""
 
 import math
-import os
 from random import randint
 from collections import deque
-import copy
 import numpy as np
 import pprint
 
@@ -20,16 +18,16 @@ from pygame import Rect, QUIT, KEYUP, K_ESCAPE, K_PAUSE, K_p
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-BIRDS_PER_POP = 1
+BIRDS_PER_POP = 10
 MATING_SIZE = 2
-POP_SIZE = 137*BIRDS_PER_POP
+
 
 global pprinter
 FPS = 60
 ANIMATION_SPEED = 0.18  # pixels per millisecond
 WIN_WIDTH = 284 * 2     # BG image size: 284x512 px; tiled twice
 WIN_HEIGHT = 512
-MUTATION_RATE = 0.01
+MUTATION_RATE = 0.02
 
 
 class Bird(pygame.sprite.Sprite):
@@ -187,6 +185,7 @@ class PipePair(pygame.sprite.Sprite):
         pipe_body_img: The image to use to represent one horizontal slice
             of a pipe's body.
         """
+        pygame.sprite.Sprite.__init__(self)
         self.x = float(WIN_WIDTH - 1)
         self.score_counted = False
 
@@ -252,6 +251,9 @@ class PipePair(pygame.sprite.Sprite):
         """
         self.x -= ANIMATION_SPEED * frames_to_msec(delta_frames)
 
+    def bird_pipe_collision_x(self, bird):
+        return self.x - (0.5 * PipePair.WIDTH) < bird.x < self.x + (0.5 * PipePair.WIDTH)
+
     def collides_with(self, bird):
         """Get whether the bird collides with a pipe in this PipePair.
 
@@ -259,7 +261,10 @@ class PipePair(pygame.sprite.Sprite):
         bird: The Bird which should be tested for collision with this
             PipePair.
         """
-        return pygame.sprite.collide_mask(self, bird)
+        collides = False
+        if self.bird_pipe_collision_x(bird) and (bird.y < self.bottom_height_px or bird.y > self.top_height_px):
+            collides = True
+        return collides
 
 
 class NeuralNetwork(tf.keras.Sequential):
@@ -361,7 +366,7 @@ def pool_selection(birds):
     # Make sure it's a copy!
     # (this includes mutation)
     birds[index].fitness = 0
-    return copy.copy(birds[index])
+    return birds[index]
 
 
 def select_parents(number_of_parents, birds_with_fitness):
@@ -386,19 +391,59 @@ def main(initial_nn_pop, max_generations=3):
     birds = create_birds(BIRDS_PER_POP, images, initial_nn_pop)
     while generation < max_generations:
         birds_with_scores = run_game(birds)
-        birds = generate_new_generation(birds_with_scores)
+        updated_birds = generate_new_generation(birds_with_scores)
+        birds = pygame.sprite.Group()
+        print(updated_birds)
+        for index, bird in updated_birds.items():
+            birds.add(bird)
         generation += 1
     pygame.quit()
 
 
+def create_child_brother(updated_bird: Bird, index: int):
+    model_weights = np.array(updated_bird.network.get_weights())
+    brother_bird = Bird(50, int(WIN_HEIGHT / 2 - Bird.HEIGHT / 2),
+                        2, (images['bird-wingup'], images['bird-wingdown']), index, NeuralNetwork())
+    for layer_idx, layer in enumerate(model_weights):
+        for l_w_idx, layer_weight in enumerate(layer):
+            if layer_weight is not 0 and hasattr(layer_weight, '__iter__'):
+                for w_idx, weight in enumerate(layer_weight):
+                    model_weights[layer_idx][l_w_idx][w_idx] = np.random.normal(weight, abs(0.25 * weight))
+    brother_bird.network.set_weights(model_weights)
+    return brother_bird
+
+
 def create_offspring_network(bird, selected_parent_birds):
+    updated_bird = create_crossover_mutated_child(bird, selected_parent_birds)
+    selected_parent_birds.append(bird)
+    offspring = selected_parent_birds
+    index = 1 + MATING_SIZE
+    while len(offspring) < BIRDS_PER_POP:
+        offspring.append(create_child_brother(updated_bird, index))
+        index += 1
+    return offspring
+
+
+def create_crossover_mutated_child(bird: Bird, selected_parent_birds):
     model_weights = np.array(bird.network.get_weights())
     parent_a_weights = np.array(selected_parent_birds[0].network.get_weights())
     parent_b_weights = np.array(selected_parent_birds[1].network.get_weights())
-    for layer in model_weights:
-        for weight in layer:
-            print(weight)
-    pass
+    parent_a_range = (1.0 - MUTATION_RATE) / 2.0
+    parent_b_range = 1.0 - MUTATION_RATE
+    for layer_idx, layer in enumerate(model_weights):
+        for l_w_idx, layer_weight in enumerate(layer):
+            if layer_weight is not 0 and hasattr(layer_weight, '__iter__'):
+                for w_idx, _ in enumerate(layer_weight):
+                    random = np.random.uniform(0, 1)
+                    if random > parent_b_range:
+                        continue
+                    if random <= parent_a_range:
+                        model_weights[layer_idx][l_w_idx][w_idx] = parent_a_weights[layer_idx][l_w_idx][w_idx]
+                    if parent_b_range > random > parent_a_range:
+                        model_weights[layer_idx][l_w_idx][w_idx] = parent_b_weights[layer_idx][l_w_idx][w_idx]
+
+    bird.network.set_weights(model_weights)
+    return bird
 
 
 def generate_new_generation(birds_with_scores):
@@ -410,23 +455,29 @@ def generate_new_generation(birds_with_scores):
     return birds_with_scores
 
 
-def calculate_distance_to_next_pipe(bird:Bird, closest_pipe:PipePair):
-    return (closest_pipe.x - bird.x) / WIN_WIDTH
+def calculate_distance_to_next_pipe(closest_pipe: PipePair):
+    if closest_pipe is not None:
+        return (closest_pipe.x - 50) / WIN_WIDTH
+    else:
+        return 1.0
 
 
-def find_next_pipe_pair(bird, pipes):
+def find_next_pipe_pair(pipes):
     closest_distance = float('+Inf')
     closest_pipe = None
     for pipe in pipes:
-        distance = pipe.x - bird.x
+        distance = pipe.x - 50
         if 0 < distance < closest_distance:
             closest_distance = distance
             closest_pipe = pipe
     return closest_pipe
 
 
-def calculate_next_pipe_opening_height(closest_pipe=PipePair):
-    return (closest_pipe.bottom_pieces * PipePair.PIECE_HEIGHT) / WIN_HEIGHT
+def calculate_next_pipe_opening_height(closest_pipe: PipePair):
+    if closest_pipe is not None:
+        return (closest_pipe.bottom_pieces * PipePair.PIECE_HEIGHT) / WIN_HEIGHT
+    else:
+        return 0.5
 
 
 def run_game(birds):
@@ -441,6 +492,14 @@ def run_game(birds):
     while not done:
         clock.tick(FPS)
 
+        # check for collisions
+        for bird in birds.sprites():
+            for p in pipes:
+                pipe_collision = p.collides_with(bird)
+                if pipe_collision or 0 >= bird.y or bird.y >= WIN_HEIGHT - Bird.HEIGHT:
+                    bird.score = score
+                    score_list[bird.index] = bird
+                    birds.remove(bird)
         # Handle this 'manually'.  If we used pygame.time.set_timer(),
         # pipe addition would be messed up when paused.
         if not (paused or frame_clock % msec_to_frames(PipePair.ADD_INTERVAL)):
@@ -454,11 +513,12 @@ def run_game(birds):
             elif e.type == KEYUP and e.key in (K_PAUSE, K_p):
                 paused = not paused
 
+        next_pipe_pair = find_next_pipe_pair(pipes)
+        relative_distance_to_next_pipe = calculate_distance_to_next_pipe(next_pipe_pair)
+        relative_height_of_pipe_opening = calculate_next_pipe_opening_height(next_pipe_pair)
+
         for bird in birds.sprites():
             relative_height = bird.y / WIN_HEIGHT
-            next_pipe_pair = find_next_pipe_pair(bird, pipes)
-            relative_distance_to_next_pipe = calculate_distance_to_next_pipe(bird, next_pipe_pair)
-            relative_height_of_pipe_opening = calculate_next_pipe_opening_height(next_pipe_pair)
             relative_falling_time = bird.msec_to_climb / Bird.CLIMB_DURATION
             predict_input = np.array([
                 [
@@ -469,20 +529,12 @@ def run_game(birds):
                 ]
             ])
             jump = bird.network.predict(predict_input)
-            if jump[0][0] > 0.3:
+            if jump[0][0] > 0.5 and bird.msec_to_climb < 20:
                 bird.msec_to_climb = Bird.CLIMB_DURATION
 
         if paused:
             continue  # don't draw anything
 
-        # check for collisions
-        for bird in birds.sprites():
-            for p in pipes:
-                pipe_collision = p.collides_with(bird)
-                if pipe_collision or 0 >= bird.y or bird.y >= WIN_HEIGHT - Bird.HEIGHT:
-                    bird.score = score
-                    score_list[bird.index] = bird
-                    birds.remove(bird)
         if len(birds.sprites()):
             for x in (0, WIN_WIDTH / 2):
                 display_surface.blit(images['background'], (x, 0))
