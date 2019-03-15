@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-"""Flappy Bird, implemented using Pygame."""
+"""Flappy birb, implemented using Pygame."""
 
 import math
 from random import randint
@@ -18,7 +18,7 @@ from pygame import Rect, QUIT, KEYUP, K_ESCAPE, K_PAUSE, K_p
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-BIRDS_PER_POP = 15
+birbS_PER_POP = 15
 MATING_SIZE = 2
 
 
@@ -30,29 +30,29 @@ WIN_HEIGHT = 512
 MUTATION_RATE = 0.02
 
 
-class Bird(pygame.sprite.Sprite):
-    """Represents the bird controlled by the player.
+class birb(pygame.sprite.Sprite):
+    """Represents the birb controlled by the player.
 
-    The bird is the 'hero' of this game.  The player can make it climb
+    The birb is the 'hero' of this game.  The player can make it climb
     (ascend quickly), otherwise it sinks (descends more slowly).  It must
     pass through the space in between pipes (for every pipe passed, one
     point is scored); if it crashes into a pipe, the game ends.
 
     Attributes:
-    x: The bird's X coordinate.
-    y: The bird's Y coordinate.
+    x: The birb's X coordinate.
+    y: The birb's Y coordinate.
     msec_to_climb: The number of milliseconds left to climb, where a
-        complete climb lasts Bird.CLIMB_DURATION milliseconds.
+        complete climb lasts birb.CLIMB_DURATION milliseconds.
 
     Constants:
-    WIDTH: The width, in pixels, of the bird's image.
-    HEIGHT: The height, in pixels, of the bird's image.
-    SINK_SPEED: With which speed, in pixels per millisecond, the bird
+    WIDTH: The width, in pixels, of the birb's image.
+    HEIGHT: The height, in pixels, of the birb's image.
+    SINK_SPEED: With which speed, in pixels per millisecond, the birb
         descends in one second while not climbing.
-    CLIMB_SPEED: With which speed, in pixels per millisecond, the bird
+    CLIMB_SPEED: With which speed, in pixels per millisecond, the birb
         ascends in one second while climbing, on average.  See also the
-        Bird.update docstring.
-    CLIMB_DURATION: The number of milliseconds it takes the bird to
+        birb.update docstring.
+    CLIMB_DURATION: The number of milliseconds it takes the birb to
         execute a complete climb.
     """
 
@@ -62,21 +62,21 @@ class Bird(pygame.sprite.Sprite):
     CLIMB_DURATION = 333.3
 
     def __init__(self, x, y, msec_to_climb, images, index, neural_network):
-        """Initialise a new Bird instance.
+        """Initialise a new birb instance.
 
         Arguments:
-        x: The bird's initial X coordinate.
-        y: The bird's initial Y coordinate.
+        x: The birb's initial X coordinate.
+        y: The birb's initial Y coordinate.
         msec_to_climb: The number of milliseconds left to climb, where a
-            complete climb lasts Bird.CLIMB_DURATION milliseconds.  Use
-            this if you want the bird to make a (small?) climb at the
+            complete climb lasts birb.CLIMB_DURATION milliseconds.  Use
+            this if you want the birb to make a (small?) climb at the
             very beginning of the game.
-        images: A tuple containing the images used by this bird.  It
+        images: A tuple containing the images used by this birb.  It
             must contain the following images, in the following order:
-                0. image of the bird with its wing pointing upward
-                1. image of the bird with its wing pointing downward
+                0. image of the birb with its wing pointing upward
+                1. image of the birb with its wing pointing downward
         """
-        super(Bird, self).__init__()
+        super(birb, self).__init__()
         self.x, self.y = x, y
         self.index = index
         self.msec_to_climb = msec_to_climb
@@ -88,14 +88,14 @@ class Bird(pygame.sprite.Sprite):
         self.fitness = 0
 
     def update(self, delta_frames=1):
-        """Update the bird's position.
+        """Update the birb's position.
 
         This function uses the cosine function to achieve a smooth climb:
-        In the first and last few frames, the bird climbs very little, in the
+        In the first and last few frames, the birb climbs very little, in the
         middle of the climb, it climbs a lot.
         One complete climb lasts CLIMB_DURATION milliseconds, during which
-        the bird ascends with an average speed of CLIMB_SPEED px/ms.
-        This Bird's msec_to_climb attribute will automatically be
+        the birb ascends with an average speed of CLIMB_SPEED px/ms.
+        This birb's msec_to_climb attribute will automatically be
         decreased accordingly if it was > 0 when this method was called.
 
         Arguments:
@@ -103,21 +103,21 @@ class Bird(pygame.sprite.Sprite):
             last called.
         """
         if self.msec_to_climb > 0:
-            frac_climb_done = 1 - self.msec_to_climb/Bird.CLIMB_DURATION
-            self.y -= (Bird.CLIMB_SPEED * frames_to_msec(delta_frames) *
+            frac_climb_done = 1 - self.msec_to_climb/birb.CLIMB_DURATION
+            self.y -= (birb.CLIMB_SPEED * frames_to_msec(delta_frames) *
                        (1 - math.cos(frac_climb_done * math.pi)))
             self.msec_to_climb -= frames_to_msec(delta_frames)
         else:
-            self.y += Bird.SINK_SPEED * frames_to_msec(delta_frames)
+            self.y += birb.SINK_SPEED * frames_to_msec(delta_frames)
 
     @property
     def image(self):
-        """Get a Surface containing this bird's image.
+        """Get a Surface containing this birb's image.
 
-        This will decide whether to return an image where the bird's
+        This will decide whether to return an image where the birb's
         visible wing is pointing upward or where it is pointing downward
         based on pygame.time.get_ticks().  This will animate the flapping
-        bird, even though pygame doesn't support animated GIFs.
+        birb, even though pygame doesn't support animated GIFs.
         """
         if pygame.time.get_ticks() % 500 >= 250:
             return self._img_wingup
@@ -137,15 +137,15 @@ class Bird(pygame.sprite.Sprite):
 
     @property
     def rect(self):
-        """Get the bird's position, width, and height, as a pygame.Rect."""
-        return Rect(self.x, self.y, Bird.WIDTH, Bird.HEIGHT)
+        """Get the birb's position, width, and height, as a pygame.Rect."""
+        return Rect(self.x, self.y, birb.WIDTH, birb.HEIGHT)
 
 
 class PipePair(pygame.sprite.Sprite):
     """Represents an obstacle.
 
     A PipePair has a top and a bottom pipe, and only between them can
-    the bird pass -- if it collides with either part, the game is over.
+    the birb pass -- if it collides with either part, the game is over.
 
     Attributes:
     x: The PipePair's X position.  This is a float, to make movement
@@ -194,7 +194,7 @@ class PipePair(pygame.sprite.Sprite):
         self.image.fill((0, 0, 0, 0))
         total_pipe_body_pieces = int(
             (WIN_HEIGHT -                  # fill window from top to bottom
-             3 * Bird.HEIGHT -             # make room for bird to fit through
+             3 * birb.HEIGHT -             # make room for birb to fit through
              3 * PipePair.PIECE_HEIGHT) /  # 2 end pieces + 1 body piece
             PipePair.PIECE_HEIGHT          # to get number of pipe pieces
         )
@@ -251,18 +251,18 @@ class PipePair(pygame.sprite.Sprite):
         """
         self.x -= ANIMATION_SPEED * frames_to_msec(delta_frames)
 
-    def bird_pipe_collision_x(self, bird):
-        return self.x - (0.5 * PipePair.WIDTH) < bird.x < self.x + (0.5 * PipePair.WIDTH)
+    def birb_pipe_collision_x(self, birb):
+        return self.x - (0.5 * PipePair.WIDTH) < birb.x < self.x + (0.5 * PipePair.WIDTH)
 
-    def collides_with(self, bird):
-        """Get whether the bird collides with a pipe in this PipePair.
+    def collides_with(self, birb):
+        """Get whether the birb collides with a pipe in this PipePair.
 
         Arguments:
-        bird: The Bird which should be tested for collision with this
+        birb: The birb which should be tested for collision with this
             PipePair.
         """
         collides = False
-        if self.bird_pipe_collision_x(bird) and (bird.y < self.bottom_height_px or bird.y > self.top_height_px):
+        if self.birb_pipe_collision_x(birb) and (birb.y < self.bottom_height_px or birb.y > self.top_height_px):
             collides = True
         return collides
 
@@ -285,10 +285,10 @@ def load_images():
 
     The returned dict has the following keys:
     background: The game's background image.
-    bird-wingup: An image of the bird with its wing pointing upward.
-        Use this and bird-wingdown to create a flapping bird.
-    bird-wingdown: An image of the bird with its wing pointing downward.
-        Use this and bird-wingup to create a flapping bird.
+    birb-wingup: An image of the birb with its wing pointing upward.
+        Use this and birb-wingdown to create a flapping birb.
+    birb-wingdown: An image of the birb with its wing pointing downward.
+        Use this and birb-wingup to create a flapping birb.
     pipe-end: An image of a pipe's end piece (the slightly wider bit).
         Use this and pipe-body to make pipes.
     pipe-body: An image of a slice of a pipe's body.  Use this and
@@ -314,10 +314,10 @@ def load_images():
     return {'background': load_image('background.png'),
             'pipe-end': load_image('pipe_end.png'),
             'pipe-body': load_image('pipe_body.png'),
-            # images for animating the flapping bird -- animated GIFs are
+            # images for animating the flapping birb -- animated GIFs are
             # not supported in pygame
-            'bird-wingup': load_image('bird_wing_up.png'),
-            'bird-wingdown': load_image('bird_wing_down.png')}
+            'birb-wingup': load_image('birb_wing_up.png'),
+            'birb-wingdown': load_image('birb_wing_down.png')}
 
 
 def frames_to_msec(frames, fps=FPS):
@@ -340,24 +340,24 @@ def msec_to_frames(milliseconds, fps=FPS):
     return fps * milliseconds / 1000.0
 
 
-def calculate_fitness(birds_with_scores):
+def calculate_fitness(birbs_with_scores):
     sum_scores = 0
-    for bird in birds_with_scores.items():
-        sum_scores += bird[1].score
-    for bird in birds_with_scores.items():
-        bird[1].fitness = bird[1].score / sum_scores
-    return birds_with_scores
+    for birb in birbs_with_scores.items():
+        sum_scores += birb[1].score
+    for birb in birbs_with_scores.items():
+        birb[1].fitness = birb[1].score / sum_scores
+    return birbs_with_scores
 
 
-def pool_selection(birds):
+def pool_selection(birbs):
     index = 0
     r = np.random.uniform(0, 1)
     # Keep subtracting probabilities until you get less than zero
     # Higher probabilities will be more likely to be fixed since they will
     # subtract a larger number towards zero
     while r > 0:
-        if index in range(len(birds)):
-            r -= birds[index].fitness
+        if index in range(len(birbs)):
+            r -= birbs[index].fitness
             # And move on to the next
             index += 1
 
@@ -365,15 +365,15 @@ def pool_selection(birds):
     index -= 1
     # Make sure it's a copy!
     # (this includes mutation)
-    birds[index].fitness = 0
-    return birds[index]
+    birbs[index].fitness = 0
+    return birbs[index]
 
 
-def select_parents(number_of_parents, birds_with_fitness):
-    parent_birds = []
+def select_parents(number_of_parents, birbs_with_fitness):
+    parent_birbs = []
     for _ in range(number_of_parents):
-        parent_birds.append(pool_selection(birds_with_fitness))
-    return parent_birds
+        parent_birbs.append(pool_selection(birbs_with_fitness))
+    return parent_birbs
 
 
 def main(initial_nn_pop, max_generations=10):
@@ -388,47 +388,47 @@ def main(initial_nn_pop, max_generations=10):
     global images
     images = load_images()
     pygame.init()
-    birds = create_birds(BIRDS_PER_POP, images, initial_nn_pop)
+    birbs = create_birbs(birbS_PER_POP, images, initial_nn_pop)
     while generation < max_generations:
-        birds_with_scores = run_game(birds)
-        updated_birds = generate_new_generation(birds_with_scores)
-        birds = pygame.sprite.Group()
-        for index, bird in updated_birds.items():
-            bird.y = (0.5 * WIN_HEIGHT) - (0.5 * Bird.HEIGHT)
-            bird.msec_to_climb = 0
-            birds.add(bird)
+        birbs_with_scores = run_game(birbs)
+        updated_birbs = generate_new_generation(birbs_with_scores)
+        birbs = pygame.sprite.Group()
+        for index, birb in updated_birbs.items():
+            birb.y = (0.5 * WIN_HEIGHT) - (0.5 * birb.HEIGHT)
+            birb.msec_to_climb = 0
+            birbs.add(birb)
         generation += 1
     pygame.quit()
 
 
-def create_child_brother(updated_bird: Bird, index: int):
-    model_weights = np.array(updated_bird.network.get_weights())
-    brother_bird = Bird(50, int(WIN_HEIGHT / 2 - Bird.HEIGHT / 2),
-                        2, (images['bird-wingup'], images['bird-wingdown']), index, NeuralNetwork())
+def create_child_brother(updated_birb: birb, index: int):
+    model_weights = np.array(updated_birb.network.get_weights())
+    brother_birb = birb(50, int(WIN_HEIGHT / 2 - birb.HEIGHT / 2),
+                        2, (images['birb-wingup'], images['birb-wingdown']), index, NeuralNetwork())
     for layer_idx, layer in enumerate(model_weights):
         for l_w_idx, layer_weight in enumerate(layer):
             if layer_weight is not 0 and hasattr(layer_weight, '__iter__'):
                 for w_idx, weight in enumerate(layer_weight):
                     model_weights[layer_idx][l_w_idx][w_idx] = np.random.normal(weight, abs(0.25 * weight))
-    brother_bird.network.set_weights(model_weights)
-    return brother_bird
+    brother_birb.network.set_weights(model_weights)
+    return brother_birb
 
 
-def create_offspring_network(bird, selected_parent_birds):
-    updated_bird = create_crossover_mutated_child(bird, selected_parent_birds)
-    selected_parent_birds.append(bird)
-    offspring = selected_parent_birds
+def create_offspring_network(birb, selected_parent_birbs):
+    updated_birb = create_crossover_mutated_child(birb, selected_parent_birbs)
+    selected_parent_birbs.append(birb)
+    offspring = selected_parent_birbs
     index = 1 + MATING_SIZE
-    while len(offspring) < BIRDS_PER_POP:
-        offspring.append(create_child_brother(updated_bird, index))
+    while len(offspring) < birbS_PER_POP:
+        offspring.append(create_child_brother(updated_birb, index))
         index += 1
     return offspring
 
 
-def create_crossover_mutated_child(bird: Bird, selected_parent_birds):
-    model_weights = np.array(bird.network.get_weights())
-    parent_a_weights = np.array(selected_parent_birds[0].network.get_weights())
-    parent_b_weights = np.array(selected_parent_birds[1].network.get_weights())
+def create_crossover_mutated_child(birb: birb, selected_parent_birbs):
+    model_weights = np.array(birb.network.get_weights())
+    parent_a_weights = np.array(selected_parent_birbs[0].network.get_weights())
+    parent_b_weights = np.array(selected_parent_birbs[1].network.get_weights())
     parent_a_range = (1.0 - MUTATION_RATE) / 2.0
     parent_b_range = 1.0 - MUTATION_RATE
     for layer_idx, layer in enumerate(model_weights):
@@ -443,17 +443,17 @@ def create_crossover_mutated_child(bird: Bird, selected_parent_birds):
                     if parent_b_range > random > parent_a_range:
                         model_weights[layer_idx][l_w_idx][w_idx] = parent_b_weights[layer_idx][l_w_idx][w_idx]
 
-    bird.network.set_weights(model_weights)
-    return bird
+    birb.network.set_weights(model_weights)
+    return birb
 
 
-def generate_new_generation(birds_with_scores):
-    new_generation = create_birds(BIRDS_PER_POP, images, initial_nn_pop)
-    birds_with_fitness = calculate_fitness(birds_with_scores)
-    selected_parent_birds = select_parents(MATING_SIZE, birds_with_fitness)
-    for bird in new_generation:
-         bird = create_offspring_network(bird, selected_parent_birds)
-    return birds_with_scores
+def generate_new_generation(birbs_with_scores):
+    new_generation = create_birbs(birbS_PER_POP, images, initial_nn_pop)
+    birbs_with_fitness = calculate_fitness(birbs_with_scores)
+    selected_parent_birbs = select_parents(MATING_SIZE, birbs_with_fitness)
+    for birb in new_generation:
+         birb = create_offspring_network(birb, selected_parent_birbs)
+    return birbs_with_scores
 
 
 def calculate_distance_to_next_pipe(closest_pipe: PipePair):
@@ -481,9 +481,9 @@ def calculate_next_pipe_opening_height(closest_pipe: PipePair):
         return 0.5
 
 
-def run_game(birds):
+def run_game(birbs):
     score_list = {}
-    pygame.display.set_caption('Pygame Flappy Bird')
+    pygame.display.set_caption('Pygame Flappy birb')
     clock = pygame.time.Clock()
     score_font = pygame.font.SysFont(None, 32, bold=True)  # default font
     pipes = deque()
@@ -494,13 +494,13 @@ def run_game(birds):
         clock.tick(FPS)
 
         # check for collisions
-        for bird in birds.sprites():
+        for birb in birbs.sprites():
             for p in pipes:
-                pipe_collision = p.collides_with(bird)
-                if pipe_collision or 0 >= bird.y or bird.y >= WIN_HEIGHT - Bird.HEIGHT:
-                    bird.score = score
-                    score_list[bird.index] = bird
-                    birds.remove(bird)
+                pipe_collision = p.collides_with(birb)
+                if pipe_collision or 0 >= birb.y or birb.y >= WIN_HEIGHT - birb.HEIGHT:
+                    birb.score = score
+                    score_list[birb.index] = birb
+                    birbs.remove(birb)
         # Handle this 'manually'.  If we used pygame.time.set_timer(),
         # pipe addition would be messed up when paused.
         if not (paused or frame_clock % msec_to_frames(PipePair.ADD_INTERVAL)):
@@ -518,9 +518,9 @@ def run_game(birds):
         relative_distance_to_next_pipe = calculate_distance_to_next_pipe(next_pipe_pair)
         relative_height_of_pipe_opening = calculate_next_pipe_opening_height(next_pipe_pair)
 
-        for bird in birds.sprites():
-            relative_height = bird.y / WIN_HEIGHT
-            relative_falling_time = bird.msec_to_climb / Bird.CLIMB_DURATION
+        for birb in birbs.sprites():
+            relative_height = birb.y / WIN_HEIGHT
+            relative_falling_time = birb.msec_to_climb / birb.CLIMB_DURATION
             predict_input = np.array([
                 [
                     relative_height,
@@ -529,14 +529,14 @@ def run_game(birds):
                     relative_height_of_pipe_opening
                 ]
             ])
-            jump = bird.network.predict(predict_input)
-            if jump[0][0] > 0.5 and bird.msec_to_climb < 20:
-                bird.msec_to_climb = Bird.CLIMB_DURATION
+            jump = birb.network.predict(predict_input)
+            if jump[0][0] > 0.5 and birb.msec_to_climb < 20:
+                birb.msec_to_climb = birb.CLIMB_DURATION
 
         if paused:
             continue  # don't draw anything
 
-        if len(birds.sprites()):
+        if len(birbs.sprites()):
             for x in (0, WIN_WIDTH / 2):
                 display_surface.blit(images['background'], (x, 0))
 
@@ -547,37 +547,37 @@ def run_game(birds):
             p.update()
             display_surface.blit(p.image, p.rect)
         score += 1
-        birds.update()
-        birds.draw(display_surface)
-        for bird in birds:
-            display_surface.blit(bird.image, bird.rect)
+        birbs.update()
+        birbs.draw(display_surface)
+        for birb in birbs:
+            display_surface.blit(birb.image, birb.rect)
         score_surface = score_font.render(str(score), True, (255, 255, 255))
         score_x = WIN_WIDTH / 2 - score_surface.get_width() / 2
         display_surface.blit(score_surface, (score_x, PipePair.PIECE_HEIGHT))
-        if not len(birds.spritedict):
+        if not len(birbs.spritedict):
             done = True
         pygame.display.flip()
         frame_clock += 1
     print("Game over! Scores: \n\t")
-    for index, bird in score_list.items():
-        print(index, ' - ', bird.score)
+    for index, birb in score_list.items():
+        print(index, ' - ', birb.score)
 
     return score_list
 
 
-def create_birds(number, images, networks):
-    birds = pygame.sprite.Group()
+def create_birbs(number, images, networks):
+    birbs = pygame.sprite.Group()
     for i in range(number):
-        birds.add(Bird(50, int(WIN_HEIGHT / 2 - Bird.HEIGHT / 2),
-                       2, (images['bird-wingup'], images['bird-wingdown']), i, networks[i]))
-    return birds
+        birbs.add(birb(50, int(WIN_HEIGHT / 2 - birb.HEIGHT / 2),
+                       2, (images['birb-wingup'], images['birb-wingdown']), i, networks[i]))
+    return birbs
 
 
 if __name__ == '__main__':
-    # If this module had been imported, __name__ would be 'flappybird'.
+    # If this module had been imported, __name__ would be 'flappybirb'.
     # It was executed (e.g. by double-clicking the file), so call main.
     pprinter = pprint.PrettyPrinter(indent=4)
     initial_nn_pop = []
-    for _ in range(BIRDS_PER_POP):
+    for _ in range(birbS_PER_POP):
         initial_nn_pop.append(NeuralNetwork())
     main(initial_nn_pop)
