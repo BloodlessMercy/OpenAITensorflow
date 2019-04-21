@@ -453,7 +453,7 @@ def write_generation_to_log(birbs, best_scores, generation_number):
         generation_highest_score
     ]
     print('logged line: ', line)
-    with open('./logging/birbs_2019_04_20.csv', 'a', newline='') as csvFile:
+    with open('./logging/birbs_2019_04_21.csv', 'a', newline='') as csvFile:
         writer = csv.writer(csvFile)
         writer.writerow(line)
 
