@@ -7,6 +7,10 @@ from random import randint
 from collections import deque
 import numpy as np
 import pprint
+import operator
+import datetime
+import time
+import csv
 
 import tensorflow as tf
 from tensorflow import layers as tfl
@@ -18,19 +22,21 @@ from pygame import Rect, QUIT, KEYUP, K_ESCAPE, K_PAUSE, K_p
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-birbS_PER_POP = 15
+BIRBS_PER_POP = 15
 MATING_SIZE = 2
 
 
-global pprinter
+global pprinter, generation, highest_score
 FPS = 60
 ANIMATION_SPEED = 0.18  # pixels per millisecond
 WIN_WIDTH = 284 * 2     # BG image size: 284x512 px; tiled twice
 WIN_HEIGHT = 512
 MUTATION_RATE = 0.02
+generation = 0
+highest_score = 0
 
 
-class birb(pygame.sprite.Sprite):
+class Birb(pygame.sprite.Sprite):
     """Represents the birb controlled by the player.
 
     The birb is the 'hero' of this game.  The player can make it climb
@@ -76,7 +82,7 @@ class birb(pygame.sprite.Sprite):
                 0. image of the birb with its wing pointing upward
                 1. image of the birb with its wing pointing downward
         """
-        super(birb, self).__init__()
+        super(Birb, self).__init__()
         self.x, self.y = x, y
         self.index = index
         self.msec_to_climb = msec_to_climb
@@ -103,12 +109,14 @@ class birb(pygame.sprite.Sprite):
             last called.
         """
         if self.msec_to_climb > 0:
-            frac_climb_done = 1 - self.msec_to_climb/birb.CLIMB_DURATION
-            self.y -= (birb.CLIMB_SPEED * frames_to_msec(delta_frames) *
+            frac_climb_done = 1 - self.msec_to_climb/Birb.CLIMB_DURATION
+            self.y -= (Birb.CLIMB_SPEED * frames_to_msec(delta_frames) *
                        (1 - math.cos(frac_climb_done * math.pi)))
             self.msec_to_climb -= frames_to_msec(delta_frames)
+            self.y = min(WIN_HEIGHT - (Birb.HEIGHT / 2), self.y)
         else:
-            self.y += birb.SINK_SPEED * frames_to_msec(delta_frames)
+            self.y += Birb.SINK_SPEED * frames_to_msec(delta_frames)
+            self.y = min(WIN_HEIGHT - (Birb.HEIGHT / 2), self.y)
 
     @property
     def image(self):
@@ -138,7 +146,7 @@ class birb(pygame.sprite.Sprite):
     @property
     def rect(self):
         """Get the birb's position, width, and height, as a pygame.Rect."""
-        return Rect(self.x, self.y, birb.WIDTH, birb.HEIGHT)
+        return Rect(self.x, self.y, Birb.WIDTH, Birb.HEIGHT)
 
 
 class PipePair(pygame.sprite.Sprite):
@@ -194,7 +202,7 @@ class PipePair(pygame.sprite.Sprite):
         self.image.fill((0, 0, 0, 0))
         total_pipe_body_pieces = int(
             (WIN_HEIGHT -                  # fill window from top to bottom
-             3 * birb.HEIGHT -             # make room for birb to fit through
+             3 * Birb.HEIGHT -             # make room for birb to fit through
              3 * PipePair.PIECE_HEIGHT) /  # 2 end pieces + 1 body piece
             PipePair.PIECE_HEIGHT          # to get number of pipe pieces
         )
@@ -251,20 +259,17 @@ class PipePair(pygame.sprite.Sprite):
         """
         self.x -= ANIMATION_SPEED * frames_to_msec(delta_frames)
 
-    def birb_pipe_collision_x(self, birb):
-        return self.x - (0.5 * PipePair.WIDTH) < birb.x < self.x + (0.5 * PipePair.WIDTH)
-
-    def collides_with(self, birb):
-        """Get whether the birb collides with a pipe in this PipePair.
+    def collides_with(self, birb: Birb):
+        """Get whether the bird crashed into a pipe in this PipePair.
 
         Arguments:
-        birb: The birb which should be tested for collision with this
-            PipePair.
+        bird_position: The bird's position on screen, as a tuple in
+            the form (X, Y).
         """
-        collides = False
-        if self.birb_pipe_collision_x(birb) and (birb.y < self.bottom_height_px or birb.y > self.top_height_px):
-            collides = True
-        return collides
+        in_x_range = birb.x + Birb.WIDTH > self.x and birb.x < self.x + PipePair.WIDTH
+        in_y_range = (birb.y < self.top_height_px or
+                      birb.y + Birb.HEIGHT > WIN_HEIGHT - self.bottom_height_px)
+        return in_x_range and in_y_range
 
 
 class NeuralNetwork(tf.keras.Sequential):
@@ -340,70 +345,61 @@ def msec_to_frames(milliseconds, fps=FPS):
     return fps * milliseconds / 1000.0
 
 
-def calculate_fitness(birbs_with_scores):
-    sum_scores = 0
-    for birb in birbs_with_scores.items():
-        sum_scores += birb[1].score
-    for birb in birbs_with_scores.items():
-        birb[1].fitness = birb[1].score / sum_scores
-    return birbs_with_scores
+def get_highest_scoring_birbs(birbs_with_scores):
+    highest_indexes = [-1, -1, -1]
+    highest_scores = [0, 0, 0]
+    for index, birb in list(birbs_with_scores.items()):
+        if birb.score > highest_scores[0]:
+            highest_scores[0] = birb.score
+            highest_indexes[0] = birb.index
+    for index, birb in list(birbs_with_scores.items()):
+        if birb.score >= highest_scores[1] and birb.index is not highest_indexes[0]:
+            highest_scores[1] = birb.score
+            highest_indexes[1] = birb.index
+    for index, birb in list(birbs_with_scores.items()):
+        if birb.score > highest_scores[2] and birb.index is not highest_indexes[0] and birb.index is not highest_indexes[1]:
+            highest_scores[2] = birb.score
+            highest_indexes[2] = birb.index
+
+    while -1 in highest_indexes:
+        for index, h_index in enumerate(highest_indexes):
+            if h_index == -1:
+                random_index = randint(0, len(birbs_with_scores))
+                if random_index in birbs_with_scores:
+                    highest_indexes[index] = random_index
+    print('highest scoring birbs: ', highest_indexes)
+    return highest_indexes, highest_scores
 
 
-def pool_selection(birbs):
-    index = 0
-    r = np.random.uniform(0, 1)
-    # Keep subtracting probabilities until you get less than zero
-    # Higher probabilities will be more likely to be fixed since they will
-    # subtract a larger number towards zero
-    while r > 0:
-        if index in range(len(birbs)):
-            r -= birbs[index].fitness
-            # And move on to the next
-            index += 1
-
-    # Go back one
-    index -= 1
-    # Make sure it's a copy!
-    # (this includes mutation)
-    birbs[index].fitness = 0
-    return birbs[index]
-
-
-def select_parents(number_of_parents, birbs_with_fitness):
-    parent_birbs = []
-    for _ in range(number_of_parents):
-        parent_birbs.append(pool_selection(birbs_with_fitness))
-    return parent_birbs
-
-
-def main(initial_nn_pop, max_generations=10):
+def main(initial_nn_pop, max_generations=100):
     """The application's entry point.
 
     If someone executes this module (instead of importing it, for
     example), this function is called.
     """
-    generation = 0
     global display_surface
+    generation = 1
     display_surface = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
     global images
     images = load_images()
-    pygame.init()
-    birbs = create_birbs(birbS_PER_POP, images, initial_nn_pop)
-    while generation < max_generations:
+    birbs = create_birbs(BIRBS_PER_POP, images, initial_nn_pop)
+    while generation > 0:
+        display_surface = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+        pygame.init()
+        pygame.display.set_caption('Pygame Flappy birb')
         birbs_with_scores = run_game(birbs)
-        updated_birbs = generate_new_generation(birbs_with_scores)
-        birbs = pygame.sprite.Group()
-        for index, birb in updated_birbs.items():
-            birb.y = (0.5 * WIN_HEIGHT) - (0.5 * birb.HEIGHT)
-            birb.msec_to_climb = 0
-            birbs.add(birb)
+        pygame.quit()
+        del birbs
+        birbs = generate_new_generation(birbs_with_scores, generation)
+        del birbs_with_scores
         generation += 1
+
     pygame.quit()
 
 
-def create_child_brother(updated_birb: birb, index: int):
+def create_child_brother(updated_birb: Birb, index: int):
     model_weights = np.array(updated_birb.network.get_weights())
-    brother_birb = birb(50, int(WIN_HEIGHT / 2 - birb.HEIGHT / 2),
+    brother_birb = Birb(50, int(WIN_HEIGHT / 2 - Birb.HEIGHT / 2),
                         2, (images['birb-wingup'], images['birb-wingdown']), index, NeuralNetwork())
     for layer_idx, layer in enumerate(model_weights):
         for l_w_idx, layer_weight in enumerate(layer):
@@ -414,18 +410,9 @@ def create_child_brother(updated_birb: birb, index: int):
     return brother_birb
 
 
-def create_offspring_network(birb, selected_parent_birbs):
-    updated_birb = create_crossover_mutated_child(birb, selected_parent_birbs)
-    selected_parent_birbs.append(birb)
-    offspring = selected_parent_birbs
-    index = 1 + MATING_SIZE
-    while len(offspring) < birbS_PER_POP:
-        offspring.append(create_child_brother(updated_birb, index))
-        index += 1
-    return offspring
-
-
-def create_crossover_mutated_child(birb: birb, selected_parent_birbs):
+def create_crossover_mutated_child(selected_parent_birbs):
+    birb = Birb(50, int(WIN_HEIGHT / 2 - Birb.HEIGHT / 2),
+                2, (images['birb-wingup'], images['birb-wingdown']), 999, NeuralNetwork())
     model_weights = np.array(birb.network.get_weights())
     parent_a_weights = np.array(selected_parent_birbs[0].network.get_weights())
     parent_b_weights = np.array(selected_parent_birbs[1].network.get_weights())
@@ -434,7 +421,7 @@ def create_crossover_mutated_child(birb: birb, selected_parent_birbs):
     for layer_idx, layer in enumerate(model_weights):
         for l_w_idx, layer_weight in enumerate(layer):
             if layer_weight is not 0 and hasattr(layer_weight, '__iter__'):
-                for w_idx, _ in enumerate(layer_weight):
+                for w_idx, weight in enumerate(layer_weight):
                     random = np.random.uniform(0, 1)
                     if random > parent_b_range:
                         continue
@@ -442,18 +429,69 @@ def create_crossover_mutated_child(birb: birb, selected_parent_birbs):
                         model_weights[layer_idx][l_w_idx][w_idx] = parent_a_weights[layer_idx][l_w_idx][w_idx]
                     if parent_b_range > random > parent_a_range:
                         model_weights[layer_idx][l_w_idx][w_idx] = parent_b_weights[layer_idx][l_w_idx][w_idx]
-
     birb.network.set_weights(model_weights)
     return birb
 
 
-def generate_new_generation(birbs_with_scores):
-    new_generation = create_birbs(birbS_PER_POP, images, initial_nn_pop)
-    birbs_with_fitness = calculate_fitness(birbs_with_scores)
-    selected_parent_birbs = select_parents(MATING_SIZE, birbs_with_fitness)
-    for birb in new_generation:
-         birb = create_offspring_network(birb, selected_parent_birbs)
-    return birbs_with_scores
+def write_generation_to_log(birbs, best_scores, generation_number):
+    # Line = generation;best_birb;second_birb;third_birb;generation_average;highest_score;
+    sum_scores = 0
+    generation_highest_score = 0
+    birbs = list(birbs.items())
+    birbs.sort(key=operator.itemgetter(0))
+    print(birbs)
+    for index, birb in birbs:
+        sum_scores += birb.score
+        if birb.score > generation_highest_score:
+            birb.score = generation_highest_score
+    line = [
+        generation_number,
+        int(best_scores[0]),
+        int(best_scores[1]),
+        int(best_scores[2]),
+        sum_scores / BIRBS_PER_POP,
+        generation_highest_score
+    ]
+    print('logged line: ', line)
+    with open('./logging/birbs_2019_04_20.csv', 'a', newline='') as csvFile:
+        writer = csv.writer(csvFile)
+        writer.writerow(line)
+
+
+def generate_new_generation(birbs_with_scores, generation_number: int):
+    new_generation = pygame.sprite.Group()
+    parent_birb_indices, parent_birb_scores = get_highest_scoring_birbs(birbs_with_scores)
+    write_generation_to_log(birbs_with_scores, parent_birb_scores, generation_number)
+    birbs_with_scores[parent_birb_indices[0]].index = 0
+    birbs_with_scores[parent_birb_indices[1]].index = 1
+    birbs_with_scores[parent_birb_indices[2]].index = 2
+    new_generation.add(birbs_with_scores[parent_birb_indices[0]])
+    new_generation.add(birbs_with_scores[parent_birb_indices[1]])
+    new_generation.add(birbs_with_scores[parent_birb_indices[2]])
+    print('create crossover child')
+    updated_birb = create_crossover_mutated_child([
+        birbs_with_scores[parent_birb_indices[0]],
+        birbs_with_scores[parent_birb_indices[1]]
+    ])
+    print('crossover child created: ', datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S'))
+    updated_birb.index = len(new_generation.sprites())
+    new_generation.add(updated_birb)
+
+    print('generate brethren:')
+    parent_birb = 0
+    for index in range(0, BIRBS_PER_POP - 7):
+        new_generation.add(create_child_brother(birbs_with_scores[parent_birb_indices[parent_birb]], index))
+        print('brother ', index, ' created: ', datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S'))
+        if parent_birb >= 2:
+            parent_birb += 1
+        else:
+            parent_birb = 0
+    print('generate random birbs:')
+    for index in range(len(new_generation.sprites()) - 1, BIRBS_PER_POP):
+        new_generation.add(Birb(50, int(WIN_HEIGHT / 2 - Birb.HEIGHT / 2),
+                           2, (images['birb-wingup'], images['birb-wingdown']), len(new_generation.sprites()), NeuralNetwork()))
+        print('random birb generated: ', datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S'))
+    return new_generation
 
 
 def calculate_distance_to_next_pipe(closest_pipe: PipePair):
@@ -464,13 +502,11 @@ def calculate_distance_to_next_pipe(closest_pipe: PipePair):
 
 
 def find_next_pipe_pair(pipes):
-    closest_distance = float('+Inf')
-    closest_pipe = None
-    for pipe in pipes:
-        distance = pipe.x - 50
-        if 0 < distance < closest_distance:
-            closest_distance = distance
-            closest_pipe = pipe
+    distance = pipes[0].x - 50
+    if distance < 0 and len(pipes) > 1:
+        closest_pipe = pipes[1]
+    else:
+        closest_pipe = pipes[0]
     return closest_pipe
 
 
@@ -483,7 +519,6 @@ def calculate_next_pipe_opening_height(closest_pipe: PipePair):
 
 def run_game(birbs):
     score_list = {}
-    pygame.display.set_caption('Pygame Flappy birb')
     clock = pygame.time.Clock()
     score_font = pygame.font.SysFont(None, 32, bold=True)  # default font
     pipes = deque()
@@ -493,14 +528,6 @@ def run_game(birbs):
     while not done:
         clock.tick(FPS)
 
-        # check for collisions
-        for birb in birbs.sprites():
-            for p in pipes:
-                pipe_collision = p.collides_with(birb)
-                if pipe_collision or 0 >= birb.y or birb.y >= WIN_HEIGHT - birb.HEIGHT:
-                    birb.score = score
-                    score_list[birb.index] = birb
-                    birbs.remove(birb)
         # Handle this 'manually'.  If we used pygame.time.set_timer(),
         # pipe addition would be messed up when paused.
         if not (paused or frame_clock % msec_to_frames(PipePair.ADD_INTERVAL)):
@@ -515,6 +542,15 @@ def run_game(birbs):
                 paused = not paused
 
         next_pipe_pair = find_next_pipe_pair(pipes)
+        # check for collisions
+        for birb in birbs.sprites():
+            pipe_collision = next_pipe_pair.collides_with(birb)
+            if pipe_collision or 0 >= birb.y or birb.y >= WIN_HEIGHT - birb.HEIGHT:
+                middle_of_next_hole = (next_pipe_pair.top_height_px - next_pipe_pair.bottom_height_px) / 2.0
+                birb.score = max(0, score - abs(birb.y - middle_of_next_hole) / WIN_HEIGHT * 100)
+                score_list[birb.index] = birb
+                birbs.remove(birb)
+
         relative_distance_to_next_pipe = calculate_distance_to_next_pipe(next_pipe_pair)
         relative_height_of_pipe_opening = calculate_next_pipe_opening_height(next_pipe_pair)
 
@@ -530,7 +566,7 @@ def run_game(birbs):
                 ]
             ])
             jump = birb.network.predict(predict_input)
-            if jump[0][0] > 0.5 and birb.msec_to_climb < 20:
+            if jump[0][0] > 0.4 and birb.msec_to_climb < 100:
                 birb.msec_to_climb = birb.CLIMB_DURATION
 
         if paused:
@@ -560,7 +596,7 @@ def run_game(birbs):
         frame_clock += 1
     print("Game over! Scores: \n\t")
     for index, birb in score_list.items():
-        print(index, ' - ', birb.score)
+        print(index, ' - ', birb.score),
 
     return score_list
 
@@ -568,7 +604,7 @@ def run_game(birbs):
 def create_birbs(number, images, networks):
     birbs = pygame.sprite.Group()
     for i in range(number):
-        birbs.add(birb(50, int(WIN_HEIGHT / 2 - birb.HEIGHT / 2),
+        birbs.add(Birb(50, int(WIN_HEIGHT / 2 - Birb.HEIGHT / 2),
                        2, (images['birb-wingup'], images['birb-wingdown']), i, networks[i]))
     return birbs
 
@@ -578,6 +614,6 @@ if __name__ == '__main__':
     # It was executed (e.g. by double-clicking the file), so call main.
     pprinter = pprint.PrettyPrinter(indent=4)
     initial_nn_pop = []
-    for _ in range(birbS_PER_POP):
+    for _ in range(BIRBS_PER_POP):
         initial_nn_pop.append(NeuralNetwork())
     main(initial_nn_pop)
